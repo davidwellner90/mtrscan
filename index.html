@@ -1,0 +1,53 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>MTRScan: Catch bad mill certs before they hold a shipment</title>
+<script src="pdf.min.js"></script>
+<script src="grades.js"></script>
+<style>body{font-family:system-ui,sans-serif;max-width:900px;margin:0 auto;padding:24px;color:#111;line-height:1.5}h1{font-size:2.1em;margin-bottom:.2em}.tag{color:#b45309;font-size:.85em}.box{border:1px solid #ddd;border-radius:10px;padding:18px;margin:22px 0}.warn{background:#fee2e2;border:2px solid #dc2626;border-radius:10px;padding:12px 16px;font-weight:600}button{background:#0f766e;color:#fff;border:0;padding:10px 16px;border-radius:8px;cursor:pointer}input,select,textarea{padding:7px;border:1px solid #ccc;border-radius:6px}textarea{width:100%;box-sizing:border-box;height:110px;font-family:monospace;font-size:12px}table{border-collapse:collapse;width:100%;font-size:14px}td,th{border:1px solid #ddd;padding:5px}.bad{background:#fecaca;font-weight:700}.ok{background:#dcfce7}.na{color:#888}small{color:#666}.m input{width:70px}</style></head><body>
+<p class="tag"><b>MTRScan</b> · Demand test: the paid product isn't built yet. The free checker below works now.</p>
+<h1>MTRScan: catch a bad mill cert before it holds up a shipment</h1>
+<p>Upload a material test report (MTR). We pull out the heat number, chemistry and mechanical results, then compare them with the grade you pick and flag anything out of range, so your receiving inspector can see in seconds where to look.</p>
+<div class="warn">⚠ This is an inspection aid, not a certification. It can misread a PDF, and the built-in limits are UNVERIFIED summaries that may not match the spec revision, product form or size on your PO. A qualified person must check every value against the governing spec and the purchase order before material is accepted.</div>
+<div class="box"><h2>Free tool: check an MTR</h2>
+<p><b>Your file is read inside your browser and never uploaded.</b> <small>(PDF text extraction uses pdf.js. Scanned image-only PDFs won't work, so use manual entry for those.)</small></p>
+<p>Grade/spec: <select id="g"></select> &nbsp; <input type="file" id="f" accept=".pdf,.txt"> <a href="sample-mtr.pdf">Download the SAMPLE cert</a></p>
+<textarea id="t" placeholder="…or paste the cert text here"></textarea>
+<p><button onclick="parseText(t.value)">Extract &amp; check</button></p>
+<div class="box m"><b>Extracted values. Correct anything here (or enter it by hand), then re-check:</b><br>Heat #: <input id="heat" style="width:140px"> &nbsp; <span id="fields"></span><p><button onclick="check()" style="background:#555">Re-check manual values</button></p></div>
+<div id="out"></div></div>
+<div class="box"><h2>For QA and receiving teams</h2><p>We're testing interest in a hosted version: batch-check every cert on a PO, store results per heat number, export a log for AS9100/ISO audits, and set up custom spec tables per customer.</p>
+<form onsubmit="event.preventDefault();ok.textContent='Thanks! (Demo only: no email was stored. The waitlist service is not connected yet.)'"><input type="email" required placeholder="you@shop.com" style="width:55%"> <button>Join the waitlist</button></form><p id="ok"></p>
+<p><a class="btn" href="https://buy.stripe.com/test_fZueVdbUs9P33d34Yw6kg00" style="display:inline-block;background:#111;color:#fff;padding:10px 16px;border-radius:6px;text-decoration:none">Pre-order: $79/mo</a><br><small>Reserve your spot now. Your card is saved, but you won't be charged until it ships, and you can cancel any time.</small></p></div>
+<p><small><b>Privacy:</b> Certs you check with the free tool are processed entirely in your browser and never sent to us or anyone else. If you join the waitlist, we store only your email, use it only to contact you about this product, never sell it, and will delete it on request.</small></p>
+<p><small><b>Where the limits come from:</b> <span id="srcs"></span></small></p>
+<script>
+pdfjsLib.GlobalWorkerOptions.workerSrc="pdf.worker.min.js";
+const EL=["C","Mn","P","S","Si","Cr","Ni","Mo","Cu","N","Fe","Mg","Zn","Ti","V","Al"],ME={UTS:"Tensile (ksi)",YS:"Yield (ksi)",EL:"Elong. (%)"};
+g.innerHTML=Object.keys(GRADES).map(k=>`<option>${k}</option>`).join("");
+fields.innerHTML=EL.map(e=>`${e} <input id="v_${e}">`).join(" ")+"<br>"+Object.entries(ME).map(([k,l])=>`${l} <input id="v_${k}">`).join(" ");
+srcs.innerHTML=Object.entries(SOURCES).map(([k,v])=>`[${k}] ${v}`).join("<br>");
+g.onchange=()=>check();
+f.onchange=async e=>{const file=e.target.files[0];if(!file)return;if(file.name.endsWith(".txt")){t.value=await file.text();return parseText(t.value)}
+  parseText(await pdfText(await file.arrayBuffer()))};
+async function pdfText(buf){const pdf=await pdfjsLib.getDocument({data:buf}).promise;let s="";for(let i=1;i<=pdf.numPages;i++){const c=await(await pdf.getPage(i)).getTextContent();s+=c.items.map(x=>x.str).join(" ")+"\n"}t.value=s;return s}
+function num(x){return parseFloat(x.replace(",","."))}
+function parseText(s){EL.concat(Object.keys(ME)).forEach(k=>window["v_"+k].value="");
+  const h=s.match(/heat\s*(?:no\.?|number|#)?\s*[:#]?\s*([A-Z0-9][A-Z0-9-]{3,})/i);heat.value=h?h[1]:"";
+  // header-row style: "C Mn P S ... 0.18 0.75 ..."
+  const hr=s.match(new RegExp("((?:\\b(?:"+EL.join("|")+")\\b\\s+){3,})((?:\\d*[.,]\\d+\\s+){3,})"));
+  if(hr){const ks=hr[1].trim().split(/\s+/),vs=hr[2].trim().split(/\s+/);ks.forEach((k,i)=>{if(vs[i]!==undefined)window["v_"+k].value=num(vs[i])})}
+  // pair style: "Mn: 0.75" / "Mn 0.75"
+  for(const e of EL){if(window["v_"+e].value)continue;const m=s.match(new RegExp("\\b"+e+"\\b\\s*[:=]?\\s*(\\d*[.,]\\d+)"));if(m)window["v_"+e].value=num(m[1])}
+  const mech=(re)=>{const m=s.match(re);if(!m)return"";let v=num(m[1]);if(/mpa/i.test(m[2]||""))v=+(v/6.895).toFixed(1);return v};
+  v_UTS.value=mech(/(?:tensile|UTS)[^\d]{0,30}(\d+(?:[.,]\d+)?)\s*(ksi|mpa)?/i);
+  v_YS.value=mech(/(?:yield|YS)[^\d]{0,30}(\d+(?:[.,]\d+)?)\s*(ksi|mpa)?/i);
+  v_EL.value=mech(/(?:elong\w*)[^\d]{0,30}(\d+(?:[.,]\d+)?)/i);
+  check()}
+function check(){const G=GRADES[g.value];let rows="",bad=0,missing=0;
+  const row=(k,lab,lim,unit)=>{const raw=window["v_"+k].value,v=parseFloat(raw);const [lo,hi]=lim;const r=(lo??"–")+" to "+(hi??"–");
+    if(raw===""||isNaN(v)){missing++;return`<tr class="na"><td>${lab}</td><td>not found</td><td>${r}</td><td>CHECK MANUALLY</td></tr>`}
+    const out=(lo!=null&&v<lo)||(hi!=null&&v>hi);if(out)bad++;return`<tr class="${out?"bad":"ok"}"><td>${lab}</td><td>${v}${unit}</td><td>${r}</td><td>${out?"OUT OF RANGE":"within limit"}</td></tr>`};
+  for(const[k,l]of Object.entries(G.chem))rows+=row(k,k+" (%)",l,"");
+  for(const[k,l]of Object.entries(G.mech))rows+=row(k,ME[k],l,"");
+  out.innerHTML=`<h3>${bad?`⚠ ${bad} value(s) out of range`:"No out-of-range values found"}${missing?` · ${missing} not found`:""}</h3><p>Heat #: <b>${heat.value||"not found"}</b> · Grade: ${g.value} · Limits status: <b>${G.status.toUpperCase()}</b> · Sources: ${G.src.join(", ")}</p><table><tr><th>Property</th><th>Cert value</th><th>Limit (min to max)</th><th>Result</th></tr>${rows}</table>${G.mechNote?`<p><small>Note: ${G.mechNote}</small></p>`:""}<p><small>An aid only: a qualified person must verify against the governing spec and PO.</small></p>`}
+if(location.hash=="#demo"){g.value="1018 (A29/A108 bar)";fetch("sample-mtr.pdf").then(r=>r.arrayBuffer()).then(pdfText).then(parseText)}
+</script></body></html>
